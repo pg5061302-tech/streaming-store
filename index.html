@@ -90,6 +90,13 @@ function badge(d){
   return `<span class="badge ${c}">${t}</span>`;
 }
 
+// Suma 30 días a la fecha de vencimiento (no a la fecha de pago). Si no tiene fecha, cuenta desde hoy.
+function mas30(d){
+  const b = d ? new Date(d+"T00:00:00") : new Date();
+  b.setHours(0,0,0,0); b.setDate(b.getDate()+30);
+  return b.getFullYear()+"-"+String(b.getMonth()+1).padStart(2,"0")+"-"+String(b.getDate()).padStart(2,"0");
+}
+
 // ---------- Sesión ----------
 async function start(){
   const { data:{ session } } = await sb.auth.getSession();
@@ -132,7 +139,7 @@ function render(){
         <td>${tel?`<a href="https://wa.me/${tel}" target="_blank" rel="noopener">${esc(p.telefono)}</a>`:""}</td>
         <td>${p.cliente?badge(p.vence):""}</td>
         <td>${p.monto!=null?esc(p.monto):""}</td>
-        <td><button class="sm" data-a="ep" data-id="${p.id}">Editar</button> <button class="sm d" data-a="dp" data-id="${p.id}">Borrar</button></td></tr>`;
+        <td>${p.cliente?`<button class="sm p" data-a="rp" data-id="${p.id}">Renovar +30 d</button> `:""}<button class="sm" data-a="ep" data-id="${p.id}">Editar</button> <button class="sm d" data-a="dp" data-id="${p.id}">Borrar</button></td></tr>`;
     }).join("");
     return `<section class="acc">
       <div class="ah">
@@ -141,6 +148,7 @@ function render(){
             <span><span id="pw-${c.id}">••••••</span> <button class="sm" data-a="vp" data-id="${c.id}">Ver</button> <button class="sm" data-a="cp" data-id="${c.id}">Copiar</button></span>
             ${c.proveedor?`<span>${esc(c.proveedor)}</span>`:""}</div></div>
         <div class="meta">${badge(c.vence)}
+          <button class="sm" data-a="rc" data-id="${c.id}">Renovar +30 d</button>
           <button class="sm" data-a="np" data-id="${c.id}">Nuevo perfil</button>
           <button class="sm" data-a="ec" data-id="${c.id}">Editar</button>
           <button class="sm d" data-a="dc" data-id="${c.id}">Borrar</button></div>
@@ -180,6 +188,8 @@ $("list").onclick = async e => {
   if(a==="cp"){ try{ await navigator.clipboard.writeText(c.password||""); b.textContent="Copiado"; setTimeout(()=>b.textContent="Copiar",1200);}catch{ alert("No se pudo copiar"); } }
   if(a==="ec") form("Editar cuenta", fCuenta, c, async o => (await sb.from("cuentas").update(o).eq("id",id)).error);
   if(a==="dc" && confirm(`¿Borrar la cuenta de ${c.plataforma} y todos sus perfiles?`)){ const r=await sb.from("cuentas").delete().eq("id",id); if(r.error) alert(r.error.message); load(); }
+  if(a==="rp"){ const n=mas30(p.vence); if(confirm(`Renovar a ${p.cliente}: ${p.vence||"sin fecha"} → ${n}`)){ const r=await sb.from("perfiles").update({vence:n,estado:"ocupado"}).eq("id",id); if(r.error) alert(r.error.message); load(); } }
+  if(a==="rc"){ const n=mas30(c.vence); if(confirm(`Renovar cuenta de ${c.plataforma}: ${c.vence||"sin fecha"} → ${n}`)){ const r=await sb.from("cuentas").update({vence:n}).eq("id",id); if(r.error) alert(r.error.message); load(); } }
   if(a==="np") form("Nuevo perfil", fPerfil, {estado:"libre"}, async o => (await sb.from("perfiles").insert({...o,cuenta_id:id})).error);
   if(a==="ep") form("Editar perfil", fPerfil, p, async o => (await sb.from("perfiles").update(o).eq("id",id)).error);
   if(a==="dp" && confirm("¿Borrar este perfil?")){ const r=await sb.from("perfiles").delete().eq("id",id); if(r.error) alert(r.error.message); load(); }
