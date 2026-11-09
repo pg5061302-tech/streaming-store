@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mis cuentas de streaming</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#f2f3ef;--card:#fff;--ink:#1d2327;--mut:#667078;--line:#dfe2dc;--acc:#2347c5;--ok:#1f8a5b;--warn:#b86e00;--bad:#c0392b;--r:10px}
+@media(prefers-color-scheme:dark){:root{--bg:#14181b;--card:#1d2226;--ink:#eceeea;--mut:#98a2a9;--line:#2c3338;--acc:#7e9bff;--ok:#4cc38a;--warn:#e8a33d;--bad:#ff7a6b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Figtree,system-ui,sans-serif}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 12px}
+button:hover{border-color:var(--acc)}
+button.p{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+button.d{color:var(--bad)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 3px}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:20px;margin:0}
+.bar{display:flex;gap:8px;flex-wrap:wrap}
+main{max-width:980px;margin:0 auto;padding:16px}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:8px 14px}
+.stat b{font-size:20px;display:block}
+.acc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);margin-bottom:14px;overflow:hidden}
+.ah{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)}
+.ah h2{font-size:17px;margin:0}
+.meta{color:var(--mut);font-size:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.badge{border-radius:20px;padding:2px 10px;font-size:13px;font-weight:600;border:1px solid currentColor}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mut);font-weight:600;font-size:13px}
+tr:last-child td{border-bottom:0}
+.sm{padding:3px 8px;font-size:13px}
+.empty{padding:14px;color:var(--mut)}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(420px,92vw);padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.login{max-width:340px;margin:12vh auto;padding:0 16px}
+.err{color:var(--bad);font-size:14px;min-height:20px;margin-top:8px}
+.hide{display:none}
+</style>
+</head>
+<body>
+
+<div id="login" class="login hide">
+  <h1>Mis cuentas de streaming</h1>
+  <label for="em">Correo</label><input id="em" type="email" autocomplete="username">
+  <label for="pw">Contraseña</label><input id="pw" type="password" autocomplete="current-password">
+  <div class="err" id="lerr"></div>
+  <button class="p" id="lbtn" style="width:100%;margin-top:6px">Entrar</button>
+</div>
+
+<div id="app" class="hide">
+  <header>
+    <h1>Mis cuentas de streaming</h1>
+    <div class="bar">
+      <button class="p" id="addAcc">Nueva cuenta</button>
+      <button id="csv">Descargar CSV</button>
+      <button id="out">Salir</button>
+    </div>
+  </header>
+  <main>
+    <div class="stats" id="stats"></div>
+    <div id="list"></div>
+  </main>
+</div>
+
+<dialog id="dlg"><div id="dbody"></div></dialog>
+
+<script>
+const SB_URL = "https://tkzxplcmesyfmcfmslyw.supabase.co";
+const SB_KEY = "sb_publishable_GF-Y1dZ3oFx-saJmB7ILEg_460IAsq8";
+const sb = supabase.createClient(SB_URL, SB_KEY);
+const $ = id => document.getElementById(id);
+let cuentas = [], perfiles = [];
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function dias(d){ if(!d) return null; const t=new Date(); t.setHours(0,0,0,0); return Math.round((new Date(d+"T00:00:00")-t)/864e5); }
+function badge(d){
+  const n = dias(d); if(n===null) return '<span class="meta">sin fecha</span>';
+  const c = n<0?"bad":n<=3?"warn":"ok";
+  const t = n<0?`venció hace ${-n} d`:n===0?"vence hoy":`${n} d`;
+  return `<span class="badge ${c}">${t}</span>`;
+}
+
+// ---------- Sesión ----------
+async function start(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session){ $("login").classList.add("hide"); $("app").classList.remove("hide"); await load(); }
+  else { $("app").classList.add("hide"); $("login").classList.remove("hide"); }
+}
+$("lbtn").onclick = async () => {
+  $("lerr").textContent = "";
+  const { error } = await sb.auth.signInWithPassword({ email:$("em").value.trim(), password:$("pw").value });
+  if(error) $("lerr").textContent = "No se pudo entrar: " + error.message; else start();
+};
+$("pw").onkeydown = e => { if(e.key==="Enter") $("lbtn").click(); };
+$("out").onclick = async () => { await sb.auth.signOut(); start(); };
+
+// ---------- Datos ----------
+async function load(){
+  const a = await sb.from("cuentas").select("*").order("vence",{ascending:true,nullsFirst:false});
+  const p = await sb.from("perfiles").select("*").order("created_at");
+  if(a.error||p.error){ alert("Error al cargar: " + (a.error||p.error).message); return; }
+  cuentas = a.data; perfiles = p.data; render();
+}
+
+function render(){
+  const ocup = perfiles.filter(p=>p.cliente).length;
+  const porVencer = perfiles.filter(p=>p.cliente && dias(p.vence)!==null && dias(p.vence)<=3).length;
+  const total = perfiles.reduce((s,p)=>s+(+p.monto||0),0);
+  $("stats").innerHTML =
+    `<div class="stat"><b>${cuentas.length}</b>cuentas</div>`+
+    `<div class="stat"><b>${ocup}/${perfiles.length}</b>perfiles con cliente</div>`+
+    `<div class="stat"><b class="${porVencer?'warn':''}">${porVencer}</b>clientes por vencer (3 días)</div>`+
+    `<div class="stat"><b>${total.toFixed(2)}</b>suma de montos</div>`;
+  if(!cuentas.length){ $("list").innerHTML = '<div class="empty">Aún no hay cuentas. Toca «Nueva cuenta» para empezar.</div>'; return; }
+  $("list").innerHTML = cuentas.map(c=>{
+    const ps = perfiles.filter(p=>p.cuenta_id===c.id);
+    const rows = ps.map(p=>{
+      const tel = (p.telefono||"").replace(/\D/g,"");
+      return `<tr>
+        <td>${esc(p.nombre)}</td><td>${esc(p.pin)}</td>
+        <td>${esc(p.cliente)||'<span class="meta">libre</span>'}</td>
+        <td>${tel?`<a href="https://wa.me/${tel}" target="_blank" rel="noopener">${esc(p.telefono)}</a>`:""}</td>
+        <td>${p.cliente?badge(p.vence):""}</td>
+        <td>${p.monto!=null?esc(p.monto):""}</td>
+        <td><button class="sm" data-a="ep" data-id="${p.id}">Editar</button> <button class="sm d" data-a="dp" data-id="${p.id}">Borrar</button></td></tr>`;
+    }).join("");
+    return `<section class="acc">
+      <div class="ah">
+        <div><h2>${esc(c.plataforma)}</h2>
+          <div class="meta"><span>${esc(c.correo)}</span>
+            <span><span id="pw-${c.id}">••••••</span> <button class="sm" data-a="vp" data-id="${c.id}">Ver</button> <button class="sm" data-a="cp" data-id="${c.id}">Copiar</button></span>
+            ${c.proveedor?`<span>${esc(c.proveedor)}</span>`:""}</div></div>
+        <div class="meta">${badge(c.vence)}
+          <button class="sm" data-a="np" data-id="${c.id}">Nuevo perfil</button>
+          <button class="sm" data-a="ec" data-id="${c.id}">Editar</button>
+          <button class="sm d" data-a="dc" data-id="${c.id}">Borrar</button></div>
+      </div>
+      <div class="tw">${ps.length?`<table><thead><tr><th>Perfil</th><th>PIN</th><th>Cliente</th><th>Teléfono</th><th>Vence</th><th>Monto</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">Sin perfiles. Toca «Nuevo perfil».</div>'}</div>
+    </section>`;
+  }).join("");
+}
+
+// ---------- Formularios ----------
+function form(title, fields, vals, onSave){
+  $("dbody").innerHTML = `<h2 style="margin:0 0 4px;font-size:18px">${esc(title)}</h2>` +
+    fields.map(f=>`<label for="f_${f.k}">${f.l}</label>` + (f.opts
+      ? `<select id="f_${f.k}">${f.opts.map(o=>`<option ${vals[f.k]===o?"selected":""}>${o}</option>`).join("")}</select>`
+      : `<input id="f_${f.k}" type="${f.t||"text"}" ${f.t==="number"?'step="any"':""} value="${esc(vals[f.k])}">`)).join("") +
+    `<div class="err" id="ferr"></div><div class="bar" style="justify-content:flex-end;margin-top:10px"><button id="fc">Cancelar</button><button class="p" id="fs">Guardar</button></div>`;
+  $("fc").onclick = () => $("dlg").close();
+  $("fs").onclick = async () => {
+    const o = {};
+    fields.forEach(f=>{ let v=$("f_"+f.k).value.trim(); o[f.k] = v===""?null:(f.t==="number"?+v:v); });
+    const err = await onSave(o);
+    if(err){ $("ferr").textContent = err.message; return; }
+    $("dlg").close(); load();
+  };
+  $("dlg").showModal();
+}
+const fCuenta = [{k:"plataforma",l:"Plataforma"},{k:"correo",l:"Correo",t:"email"},{k:"password",l:"Contraseña"},{k:"proveedor",l:"Proveedor"},{k:"inicio",l:"Inicio",t:"date"},{k:"vence",l:"Vence",t:"date"}];
+const fPerfil = [{k:"nombre",l:"Nombre del perfil"},{k:"pin",l:"PIN"},{k:"cliente",l:"Cliente"},{k:"telefono",l:"Teléfono (con código de país)"},{k:"inicio",l:"Inicio",t:"date"},{k:"vence",l:"Vence",t:"date"},{k:"monto",l:"Monto",t:"number"},{k:"estado",l:"Estado",opts:["libre","ocupado"]}];
+
+$("addAcc").onclick = () => form("Nueva cuenta", fCuenta, {}, async o => (await sb.from("cuentas").insert(o)).error);
+
+$("list").onclick = async e => {
+  const b = e.target.closest("button[data-a]"); if(!b) return;
+  const id = b.dataset.id, a = b.dataset.a;
+  const c = cuentas.find(x=>x.id===id), p = perfiles.find(x=>x.id===id);
+  if(a==="vp"){ const s=$("pw-"+id); const show=s.dataset.s!=="1"; s.dataset.s=show?"1":"0"; s.textContent=show?(c.password||"(vacía)"):"••••••"; b.textContent=show?"Ocultar":"Ver"; }
+  if(a==="cp"){ try{ await navigator.clipboard.writeText(c.password||""); b.textContent="Copiado"; setTimeout(()=>b.textContent="Copiar",1200);}catch{ alert("No se pudo copiar"); } }
+  if(a==="ec") form("Editar cuenta", fCuenta, c, async o => (await sb.from("cuentas").update(o).eq("id",id)).error);
+  if(a==="dc" && confirm(`¿Borrar la cuenta de ${c.plataforma} y todos sus perfiles?`)){ const r=await sb.from("cuentas").delete().eq("id",id); if(r.error) alert(r.error.message); load(); }
+  if(a==="np") form("Nuevo perfil", fPerfil, {estado:"libre"}, async o => (await sb.from("perfiles").insert({...o,cuenta_id:id})).error);
+  if(a==="ep") form("Editar perfil", fPerfil, p, async o => (await sb.from("perfiles").update(o).eq("id",id)).error);
+  if(a==="dp" && confirm("¿Borrar este perfil?")){ const r=await sb.from("perfiles").delete().eq("id",id); if(r.error) alert(r.error.message); load(); }
+};
+
+// ---------- Exportar ----------
+$("csv").onclick = () => {
+  const cols = ["plataforma","correo","password","cuenta_vence","perfil","pin","cliente","telefono","inicio","vence","monto","estado"];
+  const q = v => '"' + String(v??"").replace(/"/g,'""') + '"';
+  const lines = [cols.join(",")];
+  cuentas.forEach(c=>{
+    const ps = perfiles.filter(p=>p.cuenta_id===c.id);
+    (ps.length?ps:[{}]).forEach(p=>lines.push([c.plataforma,c.correo,c.password,c.vence,p.nombre,p.pin,p.cliente,p.telefono,p.inicio,p.vence,p.monto,p.estado].map(q).join(",")));
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\ufeff"+lines.join("\n")],{type:"text/csv"}));
+  a.download = "cuentas_streaming.csv"; a.click();
+};
+
+start();
+</script>
+</body>
+</html>
