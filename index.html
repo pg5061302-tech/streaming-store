@@ -45,6 +45,25 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .login{max-width:340px;margin:12vh auto;padding:0 16px}
 .err{color:var(--bad);font-size:14px;min-height:20px;margin-top:8px}
 .hide{display:none}
+.acts{white-space:normal}
+.acts button{margin:2px 2px 2px 0}
+@media(max-width:640px){
+  main{padding:10px}
+  header{padding:10px 12px}
+  h1{font-size:18px}
+  button{min-height:38px}
+  .stat{flex:1 1 44%}
+  .ah{flex-direction:column;align-items:stretch}
+  .ah .meta{gap:6px}
+  table,thead,tbody,tr,td{display:block}
+  thead{display:none}
+  tr{padding:8px 12px;border-bottom:1px solid var(--line)}
+  tr:last-child{border-bottom:0}
+  td{display:flex;justify-content:space-between;gap:12px;border:0;padding:4px 0;white-space:normal;text-align:right}
+  td[data-l]::before{content:attr(data-l);color:var(--mut);text-align:left}
+  td.acts{display:block;text-align:left;padding-top:8px}
+  td[data-l=""],td:empty{display:none}
+}
 </style>
 </head>
 <body>
@@ -97,6 +116,31 @@ function mas30(d){
   return b.getFullYear()+"-"+String(b.getMonth()+1).padStart(2,"0")+"-"+String(b.getDate()).padStart(2,"0");
 }
 
+// ---------- Webs, WhatsApp y mensajes ----------
+const WEBS = [["netflix","https://www.netflix.com"],["disney","https://www.disneyplus.com"],["hbo","https://www.hbomax.com"],["max","https://www.hbomax.com"],["prime","https://www.primevideo.com"],["crunchy","https://www.crunchyroll.com"]];
+function webDe(plat){
+  const n = (plat||"").toLowerCase();
+  const m = WEBS.find(w=>n.includes(w[0]));
+  return m ? m[1] : "https://www.google.com/search?q="+encodeURIComponent(plat);
+}
+function numWa(t){ let d=String(t||"").replace(/\D/g,""); if(d.length===9) d="51"+d; return d; }
+function fmtF(d){ if(!d) return ""; const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; }
+function montoTxt(p){ return p.monto!=null ? ` por *S/ ${p.monto}*` : ""; }
+function msgVencida(p,c){
+  return `Hola ${p.cliente} 👋 Te escribe Jesús. Tu cuenta de ${c.plataforma} venció${p.vence?" el "+fmtF(p.vence):""}. ¿Deseas renovar${montoTxt(p)}? Avísame y te paso los medios de pago.`;
+}
+function msgPago(p,c){
+  return `Hola ${p.cliente} 👋 Para renovar tu ${c.plataforma}${montoTxt(p)} puedes pagar así:\n\n`+
+    `💜 *Yape* al 966391323\n\n`+
+    `🏦 *Otros bancos*: ingresa el número 966391323, presiona la opción *Ligo* y te saldrá el nombre de *Jesús*.\n\n`+
+    `Cuando pagues, envíame la captura por aquí. ¡Gracias!`;
+}
+function abrirWa(p,texto){
+  const n = numWa(p.telefono);
+  if(!n){ alert("Este perfil no tiene teléfono. Edítalo y agrégalo."); return; }
+  window.open("https://wa.me/"+n+"?text="+encodeURIComponent(texto), "_blank", "noopener");
+}
+
 // ---------- Sesión ----------
 async function start(){
   const { data:{ session } } = await sb.auth.getSession();
@@ -134,12 +178,12 @@ function render(){
     const rows = ps.map(p=>{
       const tel = (p.telefono||"").replace(/\D/g,"");
       return `<tr>
-        <td>${esc(p.nombre)}</td><td>${esc(p.pin)}</td>
-        <td>${esc(p.cliente)||'<span class="meta">libre</span>'}</td>
-        <td>${tel?`<a href="https://wa.me/${tel}" target="_blank" rel="noopener">${esc(p.telefono)}</a>`:""}</td>
-        <td>${p.cliente?badge(p.vence):""}</td>
-        <td>${p.monto!=null?esc(p.monto):""}</td>
-        <td>${p.cliente?`<button class="sm p" data-a="rp" data-id="${p.id}">Renovar +30 d</button> `:""}<button class="sm" data-a="ep" data-id="${p.id}">Editar</button> <button class="sm d" data-a="dp" data-id="${p.id}">Borrar</button></td></tr>`;
+        <td data-l="Perfil">${esc(p.nombre)}</td><td data-l="PIN">${esc(p.pin)}</td>
+        <td data-l="Cliente">${esc(p.cliente)||'<span class="meta">libre</span>'}</td>
+        <td data-l="Teléfono">${tel?`<a href="https://wa.me/${numWa(p.telefono)}" target="_blank" rel="noopener">${esc(p.telefono)}</a>`:""}</td>
+        <td data-l="Vence">${p.cliente?badge(p.vence):""}</td>
+        <td data-l="Monto">${p.monto!=null?"S/ "+esc(p.monto):""}</td>
+        <td class="acts">${p.cliente?`<button class="sm p" data-a="rp" data-id="${p.id}">Renovar +30 d</button> <button class="sm" data-a="nv" data-id="${p.id}">Avisar vencida</button> <button class="sm" data-a="mp" data-id="${p.id}">Medios de pago</button> `:""}<button class="sm" data-a="ep" data-id="${p.id}">Editar</button> <button class="sm d" data-a="dp" data-id="${p.id}">Borrar</button></td></tr>`;
     }).join("");
     return `<section class="acc">
       <div class="ah">
@@ -148,6 +192,7 @@ function render(){
             <span><span id="pw-${c.id}">••••••</span> <button class="sm" data-a="vp" data-id="${c.id}">Ver</button> <button class="sm" data-a="cp" data-id="${c.id}">Copiar</button></span>
             ${c.proveedor?`<span>${esc(c.proveedor)}</span>`:""}</div></div>
         <div class="meta">${badge(c.vence)}
+          <button class="sm" data-a="go" data-id="${c.id}">Ir a la web</button>
           <button class="sm" data-a="rc" data-id="${c.id}">Renovar +30 d</button>
           <button class="sm" data-a="np" data-id="${c.id}">Nuevo perfil</button>
           <button class="sm" data-a="ec" data-id="${c.id}">Editar</button>
@@ -188,6 +233,9 @@ $("list").onclick = async e => {
   if(a==="cp"){ try{ await navigator.clipboard.writeText(c.password||""); b.textContent="Copiado"; setTimeout(()=>b.textContent="Copiar",1200);}catch{ alert("No se pudo copiar"); } }
   if(a==="ec") form("Editar cuenta", fCuenta, c, async o => (await sb.from("cuentas").update(o).eq("id",id)).error);
   if(a==="dc" && confirm(`¿Borrar la cuenta de ${c.plataforma} y todos sus perfiles?`)){ const r=await sb.from("cuentas").delete().eq("id",id); if(r.error) alert(r.error.message); load(); }
+  if(a==="go") window.open(webDe(c.plataforma), "_blank", "noopener");
+  if(a==="nv"){ const cu=cuentas.find(x=>x.id===p.cuenta_id); abrirWa(p, msgVencida(p,cu)); }
+  if(a==="mp"){ const cu=cuentas.find(x=>x.id===p.cuenta_id); abrirWa(p, msgPago(p,cu)); }
   if(a==="rp"){ const n=mas30(p.vence); if(confirm(`Renovar a ${p.cliente}: ${p.vence||"sin fecha"} → ${n}`)){ const r=await sb.from("perfiles").update({vence:n,estado:"ocupado"}).eq("id",id); if(r.error) alert(r.error.message); load(); } }
   if(a==="rc"){ const n=mas30(c.vence); if(confirm(`Renovar cuenta de ${c.plataforma}: ${c.vence||"sin fecha"} → ${n}`)){ const r=await sb.from("cuentas").update({vence:n}).eq("id",id); if(r.error) alert(r.error.message); load(); } }
   if(a==="np") form("Nuevo perfil", fPerfil, {estado:"libre"}, async o => (await sb.from("perfiles").insert({...o,cuenta_id:id})).error);
